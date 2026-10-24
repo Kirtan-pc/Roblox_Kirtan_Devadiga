@@ -105,6 +105,37 @@ Configuration and documentation files contain baseline content. The backend and 
 
 ---
 
+## Environment & Setup
+
+### Supported environment
+
+Python 3.11 (tested with Python 3.11.9) is the supported environment for the pinned backend dependencies in `backend/requirements.txt`. Python 3.14+ does not have installable wheels for several pinned packages (notably `torch==2.4.0` and `torchaudio==2.4.0`), so Python 3.11 is recommended for local development.
+
+### Virtual environment and dependencies
+
+From the repository root:
+
+```bash
+# Create an isolated virtual environment (Python 3.11)
+py -3.11 -m venv .venv
+
+# Activate it (Windows PowerShell)
+.venv\Scripts\Activate.ps1
+
+# Install backend dependencies
+pip install -r backend/requirements.txt
+```
+
+### Windows PyTorch DLL-loading note
+
+On some Windows machines, importing `torch==2.4.0` can fail with `OSError: [WinError 126] ... fbgemm.dll or one of its dependencies`. This is a machine-specific system-library issue, not a problem with the dependency pins. Confirming that `vcruntime140.dll` exists does not by itself identify which transitive dependency `fbgemm.dll` cannot load. If you encounter this error, install the Microsoft Visual C++ Redistributable for your system and retry; the exact missing DLL should be identified before changing `requirements.txt`.
+
+### What is intentionally not installed
+
+Do not install model weights, virtual environments, `node_modules`, or real recordings into the repository. These are excluded by `.gitignore`.
+
+---
+
 ## Development Roadmap
 
 * Milestone 1 (current): Repository baseline — structure, configuration, documentation.
