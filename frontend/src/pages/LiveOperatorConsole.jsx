@@ -77,82 +77,81 @@ export default function LiveOperatorConsole() {
     setLoading(false);
   };
 
-  // High-reliability Web Speech hook initialized cleanly AFTER mic access
-  const startRealtimeTranscription = (onTranscriptUpdate) => {
+  // Robust Web Speech engine started synchronously on click
+  const initSpeechRecognition = (onTranscriptUpdate) => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      setSpeechApiStatus("UNSUPPORTED_IN_BROWSER");
+      setSpeechApiStatus("UNSUPPORTED");
       return null;
     }
 
     try {
-      const recognition = new SpeechRecognition();
-      recognition.lang = 'en-IN'; // Indian English / Hinglish code-switching
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.maxAlternatives = 1;
+      const rec = new SpeechRecognition();
+      rec.lang = 'en-IN'; // Indian English & Hinglish code-switching
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.maxAlternatives = 1;
 
-      let sessionFinal = '';
-
-      recognition.onstart = () => {
-        setSpeechApiStatus("STREAMING_LIVE");
+      rec.onstart = () => {
+        setSpeechApiStatus("LIVE_STREAMING");
       };
 
-      recognition.onresult = (event) => {
+      rec.onresult = (event) => {
         let interim = '';
-        sessionFinal = '';
+        let finalChunk = '';
 
-        for (let i = 0; i < event.results.length; ++i) {
-          const item = event.results[i];
-          if (item.isFinal) {
-            sessionFinal += item[0].transcript + ' ';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const res = event.results[i];
+          if (res.isFinal) {
+            finalChunk += res[0].transcript + ' ';
           } else {
-            interim += item[0].transcript;
+            interim += res[0].transcript;
           }
         }
 
-        const fullSpoken = (baseTranscriptRef.current + ' ' + sessionFinal + interim)
-          .replace(/\s+/g, ' ')
-          .trim();
+        if (finalChunk) {
+          baseTranscriptRef.current = (baseTranscriptRef.current + ' ' + finalChunk).replace(/\s+/g, ' ').trim();
+        }
 
-        if (fullSpoken) {
-          setSpeechApiStatus("LIVE_VOICE_INGEST");
-          onTranscriptUpdate(fullSpoken);
+        const currentFull = (baseTranscriptRef.current + ' ' + interim).replace(/\s+/g, ' ').trim();
+        if (currentFull) {
+          onTranscriptUpdate(currentFull);
+          setSpeechApiStatus("LIVE_STREAMING");
         }
       };
 
-      recognition.onerror = (event) => {
-        console.warn("SpeechRecognition event:", event.error);
-        if (event.error === 'not-allowed') {
+      rec.onerror = (e) => {
+        if (e.error === 'no-speech') return; // Harmless pause
+        console.warn("Speech API event:", e.error);
+        if (e.error === 'not-allowed') {
           setSpeechApiStatus("MIC_BLOCKED");
-        } else if (event.error === 'network') {
-          setSpeechApiStatus("FALLBACK_MODE");
+        } else if (e.error === 'network') {
+          setSpeechApiStatus("NETWORK_ISSUE");
         }
       };
 
-      recognition.onend = () => {
-        // Commit sessionFinal into base buffer so sentence history is preserved across pauses
-        baseTranscriptRef.current = (baseTranscriptRef.current + ' ' + sessionFinal)
-          .replace(/\s+/g, ' ')
-          .trim();
-        sessionFinal = '';
-
+      rec.onend = () => {
         if (isRecordingRef.current) {
-          try {
-            recognition.start();
-          } catch (e) {
-            // Already started or transitioning
-          }
+          // Restart with safe 100ms backoff to avoid InvalidStateError in Chrome
+          setTimeout(() => {
+            if (isRecordingRef.current && recognitionRef.current) {
+              try {
+                recognitionRef.current.start();
+              } catch (err) {
+                // Ignore transient transition
+              }
+            }
+          }, 100);
         } else {
           setSpeechApiStatus("READY");
         }
       };
 
-      recognition.start();
-      return recognition;
+      rec.start();
+      return rec;
     } catch (err) {
-      console.warn("SpeechRecognition init exception:", err);
-      setSpeechApiStatus("FALLBACK_MODE");
+      console.warn("Speech recognition creation error:", err);
+      setSpeechApiStatus("ERROR");
       return null;
     }
   };
@@ -165,10 +164,19 @@ export default function LiveOperatorConsole() {
     setLiveTranscript("");
     transcriptRef.current = "";
     baseTranscriptRef.current = "";
-    lastVuTimeRef.current = 0;
+    isRecordingRef.current = true;
+    setIsRecording(true);
+    setSpeechApiStatus("INITIALIZING");
 
+    // 1. MUST start Speech Recognition SYNCHRONOUSLY within click event context
+    const rec = initSpeechRecognition((text) => {
+      setLiveTranscript(text);
+      transcriptRef.current = text;
+    });
+    recognitionRef.current = rec;
+
+    // 2. Concurrently acquire Audio MediaStream for recording
     try {
-      // 1. MUST acquire microphone stream FIRST so user grants permission cleanly
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -177,19 +185,7 @@ export default function LiveOperatorConsole() {
         }
       });
 
-      // 2. Mark recording state active
-      isRecordingRef.current = true;
-      setIsRecording(true);
-      setSpeechApiStatus("CONNECTING");
-
-      // 3. Start Web Speech API transcription AFTER microphone access is active
-      const rec = startRealtimeTranscription((text) => {
-        setLiveTranscript(text);
-        transcriptRef.current = text;
-      });
-      recognitionRef.current = rec;
-
-      // 4. Setup AudioContext with THROTTLED VU meter (update at most once every 120ms - 8 FPS!)
+      // 3. AudioContext for Zero-Lag VU meter (direct DOM update to avoid React re-render lag)
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       const source = audioCtx.createMediaStreamSource(stream);
       const analyser = audioCtx.createAnalyser();
@@ -202,20 +198,27 @@ export default function LiveOperatorConsole() {
 
       const updateVolume = () => {
         if (!isRecordingRef.current) return;
-        const now = performance.now();
-        if (now - lastVuTimeRef.current > 120) { // Limit React re-renders to ~8 FPS! ZERO LAG!
-          analyser.getByteFrequencyData(dataArray);
-          let sum = 0;
-          for (let i = 0; i < bufferLength; i++) sum += dataArray[i];
-          const avg = sum / bufferLength;
-          setMicVolume(Math.min(100, Math.round((avg / 128) * 100)));
-          lastVuTimeRef.current = now;
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) sum += dataArray[i];
+        const avg = sum / bufferLength;
+        const volPercent = Math.min(100, Math.round((avg / 128) * 100));
+        
+        // Direct DOM update: ZERO LAG in UI!
+        const vuEl = document.getElementById('live-vu-indicator');
+        if (vuEl) {
+          vuEl.innerText = `${volPercent}%`;
         }
+        const vuBar = document.getElementById('live-vu-bar');
+        if (vuBar) {
+          vuBar.style.width = `${volPercent}%`;
+        }
+
         animFrameRef.current = requestAnimationFrame(updateVolume);
       };
       updateVolume();
 
-      // 5. MediaRecorder to capture audio chunks for backend analysis
+      // 4. MediaRecorder to capture audio chunks for backend
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
         : MediaRecorder.isTypeSupported('audio/webm')
@@ -253,7 +256,6 @@ export default function LiveOperatorConsole() {
         try {
           const res = await axios.post(`${API_BASE}/analyze-call`, formData);
           updateTriage(res.data);
-          // If server faster-whisper returned a transcript and browser had none, display it!
           if (!transcriptRef.current && res.data.transcript) {
             setLiveTranscript(res.data.transcript);
           }
@@ -263,18 +265,17 @@ export default function LiveOperatorConsole() {
         setLoading(false);
       };
 
-      recorder.start(1000); // 1000ms chunk intervals
+      recorder.start(500); // 500ms chunk intervals
       mediaRecorderRef.current = recorder;
 
-      timerIntervalRef.current = setInterval(() => {
-        setRecordDuration(prev => prev + 1);
-      }, 1000);
-
     } catch (err) {
-      isRecordingRef.current = false;
+      console.error("Mic access error:", err);
+      setErrorMessage("Microphone access was denied. Please allow microphone permissions.");
       setIsRecording(false);
-      setErrorMessage("Microphone access denied or audio device busy: " + err.message);
-      setSpeechApiStatus("MIC_ERROR");
+      isRecordingRef.current = false;
+      if (rec) {
+        try { rec.stop(); } catch (e) {}
+      }
     }
   };
 
@@ -599,11 +600,15 @@ export default function LiveOperatorConsole() {
                       <span>MIC INGEST</span>
                     </span>
                     {isRecording ? (
-                      <span className="text-red-600 dark:text-red-400 font-bold animate-pulse">
-                        ● REC: {recordDuration}s | VU: {micVolume}%
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-red-600 dark:text-red-400 font-bold animate-pulse text-[10px]">● REC {recordDuration}s</span>
+                        <div className="w-14 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                          <div id="live-vu-bar" className="h-full bg-cyan-500 transition-all duration-75" style={{ width: '0%' }}></div>
+                        </div>
+                        <span id="live-vu-indicator" className="text-cyan-600 dark:text-cyan-400 font-mono text-[10px] w-6 text-right">0%</span>
+                      </div>
                     ) : (
-                      <span className="text-slate-400">STANDBY</span>
+                      <span className="text-slate-400 font-mono text-[10px]">STANDBY</span>
                     )}
                   </div>
 
@@ -625,15 +630,13 @@ export default function LiveOperatorConsole() {
                         <Square className="w-4 h-4" /> Stop &amp; Run Triage
                       </button>
                     )}
-                  </div>
-
-                  {/* High-reliability streaming transcript box */}
+                  </div>                  {/* High-reliability streaming transcript box */}
                   <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg p-3 shadow-inner">
                     <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 dark:text-slate-400 mb-1.5">
                       <span className="flex items-center gap-1.5 font-bold">
                         <span className={`w-2 h-2 rounded-full ${isRecording ? 'bg-red-500 animate-ping' : 'bg-cyan-500'}`}></span>
                         <span className="uppercase text-slate-800 dark:text-slate-200">
-                          {isRecording ? "LIVE TRANSCRIPT STREAM (en-IN)" : "SPEECH BUFFER"}
+                          {isRecording ? "LIVE HINGLISH TRANSCRIPT (en-IN)" : "SPEECH TRANSCRIPT BUFFER"}
                         </span>
                       </span>
                       <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold ${
@@ -643,72 +646,64 @@ export default function LiveOperatorConsole() {
                       </span>
                     </div>
 
-                    <div 
-                      ref={liveTranscriptBoxRef}
-                      className="text-xs font-mono text-slate-800 dark:text-slate-200 min-h-[58px] max-h-28 overflow-y-auto leading-relaxed bg-white dark:bg-slate-900/60 p-2.5 rounded border border-slate-200 dark:border-slate-800"
-                    >
-                      {isRecording ? (
-                        liveTranscript ? (
-                          <p className="text-cyan-700 dark:text-cyan-300 font-sans font-medium text-xs">
-                            "{liveTranscript}"<span className="inline-block w-1.5 h-3.5 bg-cyan-500 ml-1 animate-pulse align-middle"></span>
-                          </p>
-                        ) : (
-                          <p className="text-slate-400 italic text-xs flex items-center gap-1.5">
-                            <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
-                            Listening for voice in Indian English / Hinglish (speak now)...
-                          </p>
-                        )
-                      ) : (
-                        <p className="text-slate-500 dark:text-slate-400 text-xs">
-                          {liveTranscript 
-                            ? `"${liveTranscript}"` 
-                            : activeCall.transcript 
-                              ? `"${activeCall.transcript.slice(0, 110)}..."` 
-                              : "Press 'Start Live Mic Call' to begin real-time speech transcription."}
-                        </p>
+                    <div className="relative">
+                      <textarea
+                        value={liveTranscript}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setLiveTranscript(val);
+                          transcriptRef.current = val;
+                          baseTranscriptRef.current = val;
+                        }}
+                        placeholder={
+                          isRecording 
+                            ? "🎙️ Listening for speech in Hinglish / Indian English... (You can also type or edit here in real time)" 
+                            : "Click 'Start Live Mic Call' to begin real-time voice transcription. You can also edit or type manually."
+                        }
+                        className="w-full text-xs font-mono text-slate-900 dark:text-slate-100 placeholder:text-slate-400 min-h-[76px] max-h-36 leading-relaxed bg-white dark:bg-slate-900/90 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 resize-none shadow-inner"
+                        rows={3}
+                      />
+                      {isRecording && (
+                        <div className="absolute right-2.5 top-2.5 flex items-center gap-1 text-[9px] font-mono text-cyan-600 dark:text-cyan-400 font-bold bg-cyan-50 dark:bg-cyan-950/80 px-1.5 py-0.5 rounded border border-cyan-400/40 animate-pulse pointer-events-none">
+                          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
+                          LIVE
+                        </div>
                       )}
                     </div>
 
-                    <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 dark:text-slate-500 mt-1.5">
+                    {/* Quick Threat Phrase Chips for Instant Ingestion */}
+                    <div className="mt-2.5 pt-2 border-t border-slate-200 dark:border-slate-800">
+                      <div className="text-[10px] font-mono text-slate-500 dark:text-slate-400 font-semibold mb-1.5 flex items-center justify-between">
+                        <span>⚡ QUICK HINGLISH THREAT TOKENS:</span>
+                        <span className="text-[9px] text-cyan-600 dark:text-cyan-400 font-bold">CLICK TO INSERT</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          { label: "🚨 Digital Arrest", phrase: "Sir CBI digital arrest bol rahe hain video call pe" },
+                          { label: "💸 OTP Fraud", phrase: "Mera OTP chala gaya 4 lakh rupaye account se transfer ho gaye" },
+                          { label: "⚠️ Sextortion", phrase: "Morphed video leak karne ki dhamki de rahe hain paise maang rahe hain" },
+                          { label: "🔒 Account Freeze", phrase: "Bank account freeze ho gaya unauthorized debit transaction notice aaya" }
+                        ].map((item, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => {
+                              const updated = (liveTranscript ? `${liveTranscript} ${item.phrase}` : item.phrase).trim();
+                              setLiveTranscript(updated);
+                              transcriptRef.current = updated;
+                              baseTranscriptRef.current = updated;
+                            }}
+                            className="px-2 py-0.5 rounded bg-slate-100 hover:bg-cyan-50 dark:bg-slate-800 dark:hover:bg-cyan-950/60 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:text-cyan-600 dark:hover:text-cyan-300 text-[10px] font-mono transition active:scale-95 shadow-xs"
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 dark:text-slate-500 mt-2">
                       <span>LOCALE: en-IN (Hinglish Supported)</span>
                       <span>{wordCount} words | {charCount} chars</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {activeMode === 'recorded' && (
-                <div className="space-y-3">
-                  <label className="w-full py-2.5 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold rounded-lg cursor-pointer flex items-center justify-center gap-2 transition shadow-sm">
-                    <Upload className="w-4 h-4 text-cyan-600 dark:text-cyan-400" /> Upload WAV / Audio File
-                    <input type="file" accept=".wav,.webm,.mp3" onChange={handleFileUpload} className="hidden" />
-                  </label>
-
-                  <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
-                    <div className="text-[10px] font-mono text-slate-400 font-bold uppercase mb-2">
-                      5 Edge-Case Simulation Presets:
-                    </div>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <button onClick={() => runPresetSimulation("calm")} disabled={loading}
-                        className="p-1.5 text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 rounded transition text-left px-2">
-                        1. Calm Inquiry
-                      </button>
-                      <button onClick={() => runPresetSimulation("panic")} disabled={loading}
-                        className="p-1.5 text-[11px] font-semibold bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 rounded transition text-left px-2">
-                        2. UPI Panic
-                      </button>
-                      <button onClick={() => runPresetSimulation("coercion")} disabled={loading}
-                        className="p-1.5 text-[11px] font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/90 border border-rose-300 dark:border-rose-700 text-rose-900 dark:text-rose-200 rounded transition text-left px-2">
-                        3. "Fake Calm"
-                      </button>
-                      <button onClick={() => runPresetSimulation("sextortion")} disabled={loading}
-                        className="p-1.5 text-[11px] font-semibold bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/90 border border-purple-300 dark:border-purple-700 text-purple-900 dark:text-purple-200 rounded transition text-left px-2">
-                        4. Sextortion
-                      </button>
-                      <button onClick={() => runPresetSimulation("angry")} disabled={loading}
-                        className="col-span-2 p-1.5 text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded transition text-center">
-                        5. Angry False-Alarm
-                      </button>
                     </div>
                   </div>
                 </div>
