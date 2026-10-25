@@ -1,4 +1,28 @@
-/* frontend/src/index.css - Echo
-   Global styles and Tailwind directives for the Echo frontend.
-   Reserved for Milestone 3 - implementation pending. Do not add logic here yet.
-*/
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body {
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    overscroll-behavior: none;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: #f8f9ff;
+    color: #0f1c2c;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #c3c5d7;
+  border-radius: 3px;
+}

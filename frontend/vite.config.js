@@ -1,8 +1,11 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
 
-// Minimal Vite configuration for the Echo frontend.
-// Reserved for Milestone 3 - no routing, proxy, or extra plugins yet.
+// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-});
+  server: {
+    port: 5173,
+    host: true
+  }
+})

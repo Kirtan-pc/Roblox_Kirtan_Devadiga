@@ -1,24 +1,9 @@
-# Environment variables and secrets
-.env
-.env.*
-!.env.example
-
-# Python
+﻿# Python
 __pycache__/
 *.py[cod]
-*.pyd
-*.so
 venv/
 .venv/
-env/
-ENV/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
-
-# Machine-learning models and caches
+.env
 models_cache/
 model_cache/
 .cache/
@@ -29,33 +14,18 @@ huggingface/
 *.safetensors
 *.onnx
 
-# Audio recordings and generated datasets
-# Do not commit real or personally identifiable recordings by default.
-sample_audio/*.wav
-sample_audio/*.mp3
-sample_audio/*.m4a
-sample_audio/*.flac
-sample_audio/*.ogg
-
-# Node.js
+# Node
 node_modules/
-frontend/node_modules/
 dist/
-frontend/dist/
 .vite/
+frontend/node_modules/
+frontend/dist/
 frontend/.vite/
 
-# Logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-pnpm-debug.log*
-
-# Operating system
+# OS
 .DS_Store
 Thumbs.db
 Desktop.ini
 
-# IDE
-.vscode/
-.idea/
+# Logs
+*.log

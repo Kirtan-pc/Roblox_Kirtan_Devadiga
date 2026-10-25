@@ -1,10 +1,11 @@
-# Backend dependencies for Echo — Milestone 3A
-# Tested together in Python 3.14.6 environment.
-# torch 2.9.0+cpu imports reliably on this Windows machine; torch 2.4.0 does not.
-fastapi==0.162.0
-uvicorn[standard]==0.54.0
-python-multipart==0.0.32
-torch==2.9.0
-transformers==5.20.2
-soundfile==0.14.0
-numpy==2.5.4
+﻿fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+websockets==13.0
+torch==2.4.0
+torchaudio==2.4.0
+transformers==4.44.2
+librosa==0.10.2.post1
+soundfile==0.12.1
+numpy==1.26.4
+pydantic==2.9.0

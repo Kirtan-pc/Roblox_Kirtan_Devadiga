@@ -1,3 +1,10 @@
-// frontend/src/main.jsx - Echo
-// React application entry point.
-// Reserved for Milestone 3 - implementation pending. Do not add logic here yet.
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App.jsx'
+import './index.css'
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+)
