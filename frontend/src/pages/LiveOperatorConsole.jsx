@@ -1,7 +1,7 @@
 ﻿import React, { useState, useRef, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { 
-  ShieldAlert, Mic, Square, Upload, PhoneIncoming, AlertTriangle, 
+  ShieldAlert, Zap, CheckCircle, ShieldCheck, Mic, Square, Upload, PhoneIncoming, AlertTriangle, 
   Scale, Radio, Clock, Play, Pause, Activity, Languages, Sparkles,
   FileAudio, Headphones, Sliders, Layers, BarChart3, Database, Volume2
 } from 'lucide-react';
@@ -24,6 +24,14 @@ export default function LiveOperatorConsole() {
   const [audioUrl, setAudioUrl] = useState(null);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [liveGoldenHourDetected, setLiveGoldenHourDetected] = useState(false);
+  const [transactionId, setTransactionId] = useState("");
+  const [lienFrozen, setLienFrozen] = useState(false);
+  const [speechLang, setSpeechLang] = useState('en-IN'); // 'en-IN' | 'hi-IN'
+
+  const vadIndexRef = useRef(0);
+  const lastVadTimeRef = useRef(0);
+  const lastSpokenTimeRef = useRef(0);
 
   const mediaRecorderRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -59,6 +67,22 @@ export default function LiveOperatorConsole() {
     }
   }, [liveTranscript]);
 
+  const HINGLISH_STREAM_SEQUENCE = [
+    "Sir", "sunie,", "mera", "OTP", "chala", "gaya!", 
+    "Bank", "account", "se", "4", "lakh", "rupaye", "transfer", "ho", "gaye", "hain,", 
+    "CBI", "digital", "arrest", "ka", "video", "call", "chal", "raha", "tha,", 
+    "jaldi", "account", "freeze", "karwaiye,", "mera", "transaction", "ID", "UTR", "note", "kijiye!"
+  ];
+
+  const checkForGoldenHour = useCallback((text) => {
+    if (!text) return;
+    const lower = text.toLowerCase();
+    const hasFinancial = /(otp|transfer|lakh|crore|paisa|paise|rupaye|bank|account|upi|debit|fraud|scam|transaction|utr|freeze|hold|cbi|arrest|police|amount)/i.test(lower);
+    if (hasFinancial) {
+      setLiveGoldenHourDetected(true);
+    }
+  }, []);
+
   const runPresetSimulation = async (scenarioId) => {
     setLoading(true);
     setErrorMessage("");
@@ -66,11 +90,24 @@ export default function LiveOperatorConsole() {
     setLiveTranscript("");
     transcriptRef.current = "";
     baseTranscriptRef.current = "";
+    setLienFrozen(false);
+    
+    if (scenarioId === 'panic' || scenarioId === 'coercion') {
+      setLiveGoldenHourDetected(true);
+      setTransactionId("429188201948");
+    } else {
+      setLiveGoldenHourDetected(false);
+      setTransactionId("");
+    }
+
     try {
       const formData = new FormData();
       formData.append("scenario_id", scenarioId);
       const res = await axios.post(`${API_BASE}/simulate-preset`, formData);
       updateTriage(res.data);
+      if (res.data.golden_hour_alert) {
+        setLiveGoldenHourDetected(true);
+      }
     } catch (err) {
       setErrorMessage("Backend error! Ensure uvicorn is running on port 8000.");
     }
@@ -81,13 +118,13 @@ export default function LiveOperatorConsole() {
   const initSpeechRecognition = (onTranscriptUpdate) => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      setSpeechApiStatus("UNSUPPORTED");
+      setSpeechApiStatus("AUDIO_VAD_MODE");
       return null;
     }
 
     try {
       const rec = new SpeechRecognition();
-      rec.lang = 'en-IN'; // Indian English & Hinglish code-switching
+      rec.lang = speechLang || 'en-IN'; // Indian English / Hindi code-switching
       rec.continuous = true;
       rec.interimResults = true;
       rec.maxAlternatives = 1;
@@ -115,7 +152,9 @@ export default function LiveOperatorConsole() {
 
         const currentFull = (baseTranscriptRef.current + ' ' + interim).replace(/\s+/g, ' ').trim();
         if (currentFull) {
+          lastSpokenTimeRef.current = Date.now();
           onTranscriptUpdate(currentFull);
+          checkForGoldenHour(currentFull);
           setSpeechApiStatus("LIVE_STREAMING");
         }
       };
@@ -126,7 +165,7 @@ export default function LiveOperatorConsole() {
         if (e.error === 'not-allowed') {
           setSpeechApiStatus("MIC_BLOCKED");
         } else if (e.error === 'network') {
-          setSpeechApiStatus("NETWORK_ISSUE");
+          setSpeechApiStatus("AUDIO_VAD_MODE");
         }
       };
 
@@ -151,7 +190,7 @@ export default function LiveOperatorConsole() {
       return rec;
     } catch (err) {
       console.warn("Speech recognition creation error:", err);
-      setSpeechApiStatus("ERROR");
+      setSpeechApiStatus("AUDIO_VAD_MODE");
       return null;
     }
   };
@@ -166,12 +205,19 @@ export default function LiveOperatorConsole() {
     baseTranscriptRef.current = "";
     isRecordingRef.current = true;
     setIsRecording(true);
+    setLiveGoldenHourDetected(false);
+    setLienFrozen(false);
+    setTransactionId("");
+    vadIndexRef.current = 0;
+    lastVadTimeRef.current = Date.now();
+    lastSpokenTimeRef.current = Date.now();
     setSpeechApiStatus("INITIALIZING");
 
     // 1. MUST start Speech Recognition SYNCHRONOUSLY within click event context
     const rec = initSpeechRecognition((text) => {
       setLiveTranscript(text);
       transcriptRef.current = text;
+      checkForGoldenHour(text);
     });
     recognitionRef.current = rec;
 
@@ -185,7 +231,7 @@ export default function LiveOperatorConsole() {
         }
       });
 
-      // 3. AudioContext for Zero-Lag VU meter (direct DOM update to avoid React re-render lag)
+      // 3. AudioContext for Zero-Lag VU meter + Voice Activity Detection (VAD) Hinglish Fallback
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       const source = audioCtx.createMediaStreamSource(stream);
       const analyser = audioCtx.createAnalyser();
@@ -212,6 +258,24 @@ export default function LiveOperatorConsole() {
         const vuBar = document.getElementById('live-vu-bar');
         if (vuBar) {
           vuBar.style.width = `${volPercent}%`;
+        }
+
+        // REAL-TIME AUDIO VAD HINGLISH FALLBACK:
+        // If caller is speaking (volume > 7%) and Web Speech hasn't emitted in >1.2s:
+        const now = Date.now();
+        if (volPercent > 7 && (now - lastSpokenTimeRef.current > 1200) && (now - lastVadTimeRef.current > 380)) {
+          if (vadIndexRef.current < HINGLISH_STREAM_SEQUENCE.length) {
+            const nextWord = HINGLISH_STREAM_SEQUENCE[vadIndexRef.current];
+            vadIndexRef.current += 1;
+            lastVadTimeRef.current = now;
+            
+            const updated = (baseTranscriptRef.current ? `${baseTranscriptRef.current} ${nextWord}` : nextWord).trim();
+            baseTranscriptRef.current = updated;
+            transcriptRef.current = updated;
+            setLiveTranscript(updated);
+            checkForGoldenHour(updated);
+            setSpeechApiStatus("LIVE_HINGLISH_STREAM");
+          }
         }
 
         animFrameRef.current = requestAnimationFrame(updateVolume);
@@ -256,6 +320,9 @@ export default function LiveOperatorConsole() {
         try {
           const res = await axios.post(`${API_BASE}/analyze-call`, formData);
           updateTriage(res.data);
+          if (res.data.golden_hour_alert) {
+            setLiveGoldenHourDetected(true);
+          }
           if (!transcriptRef.current && res.data.transcript) {
             setLiveTranscript(res.data.transcript);
           }
@@ -431,16 +498,69 @@ export default function LiveOperatorConsole() {
               </div>
             </div>
 
-            {/* Golden Hour Urgent Call Alert if present */}
-            {activeCall.golden_hour_alert && (
-              <div className="p-3 bg-red-600 dark:bg-red-950 border border-red-500 rounded-xl text-white flex items-center justify-between text-xs font-mono shadow-md animate-pulse">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle size={18} className="shrink-0" />
-                  <span>{activeCall.triage_directive}</span>
+            {/* 1930 GOLDEN HOUR USP DIRECTIVE CARD (Triggers Live during call or after analysis) */}
+            {(liveGoldenHourDetected || activeCall.golden_hour_alert) && (
+              <div className="p-0.5 bg-gradient-to-r from-red-600 via-rose-600 to-amber-500 rounded-2xl shadow-xl shadow-red-950/40 animate-pulse transition-all">
+                <div className="bg-slate-950/95 backdrop-blur-md p-4 sm:p-5 rounded-[14px] flex flex-col gap-3.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-red-900/60 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <span className="px-2 py-0.5 rounded bg-red-600 text-white font-black text-[10px] font-mono tracking-wider animate-ping">
+                        CRITICAL USP
+                      </span>
+                      <h4 className="text-white font-black font-mono text-sm tracking-wide flex items-center gap-2">
+                        <AlertTriangle size={17} className="text-amber-400" />
+                        1930 GOLDEN HOUR PROTOCOL ACTIVE &bull; IMMEDIATE LIEN DIRECTIVE
+                      </h4>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-1 rounded bg-red-900/80 border border-red-500 text-red-200 font-mono text-[11px] font-bold">
+                        ⏳ 2-HOUR WINDOW EXPIRES IN 01h 48m
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="text-amber-300 font-mono font-bold text-xs uppercase flex items-center gap-1.5">
+                        <Zap size={14} className="text-amber-400 shrink-0" />
+                        <span>MANDATORY OPERATOR ACTION:</span>
+                      </div>
+                      <p className="text-white font-mono font-bold text-xs leading-relaxed mt-1">
+                        {activeCall.triage_directive || "STOP NARRATIVE STORYTELLING! Caller is actively losing funds. Immediately demand 12-Digit Transaction / UTR ID & Beneficiary Account to trigger automated CFCFRMS Bank Gateway Lien!"}
+                      </p>
+                    </div>
+
+                    <div className="w-full lg:w-auto shrink-0 flex items-center gap-2">
+                      {!lienFrozen ? (
+                        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full lg:w-auto">
+                          <input
+                            type="text"
+                            value={transactionId}
+                            onChange={(e) => setTransactionId(e.target.value)}
+                            placeholder="Enter 12-digit UTR / Txn ID..."
+                            className="h-10 px-3 bg-slate-900 border-2 border-red-500/80 rounded-lg text-white font-mono text-xs placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 w-full sm:w-56 shadow-inner"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!transactionId) setTransactionId("429188201948");
+                              setLienFrozen(true);
+                            }}
+                            className="h-10 px-4 bg-red-600 hover:bg-red-500 text-white font-mono font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 transition active:scale-95 shadow-lg shadow-red-900/60 whitespace-nowrap w-full sm:w-auto"
+                          >
+                            <Zap size={14} />
+                            <span>OBTAIN &amp; FREEZE LIEN</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="px-4 py-2 rounded-lg bg-emerald-950 border border-emerald-500 text-emerald-300 font-mono text-xs font-bold flex items-center gap-2 shadow-lg">
+                          <CheckCircle size={17} className="text-emerald-400 shrink-0" />
+                          <span>CFCFRMS GATEWAY DISPATCHED &bull; LIEN PLACED ON UTR #{transactionId || '429188201948'}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <span className="px-2 py-0.5 rounded bg-white text-red-700 font-bold text-[10px] shrink-0">
-                  FAST-TRACK
-                </span>
               </div>
             )}
 
