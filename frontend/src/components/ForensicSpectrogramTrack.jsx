@@ -1,7 +1,7 @@
-﻿import React, { useState } from 'react';
+﻿import React, { useState, useMemo } from 'react';
 import { Activity } from 'lucide-react';
 
-export default function ForensicSpectrogramTrack({ 
+function ForensicSpectrogramTrack({ 
   telemetry = {}, 
   waveform = {}, 
   activeTime = 0, 
@@ -75,14 +75,14 @@ export default function ForensicSpectrogramTrack({
   `;
 
   return (
-    <div className="bg-[#f8faff] border border-blue-100 rounded-2xl p-5 shadow-sm font-sans select-none text-slate-800">
+    <div className="bg-[#f8faff] dark:bg-slate-950/90 border border-blue-100 dark:border-slate-800 rounded-2xl p-5 shadow-sm font-sans select-none text-slate-800 dark:text-slate-200 transition-colors">
       {/* Top Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2.5">
           <div className="w-6 h-6 rounded-md bg-blue-100 flex items-center justify-center text-blue-600">
             <Activity className="w-4 h-4" />
           </div>
-          <h3 className="text-sm font-bold text-slate-900 tracking-tight">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight">
             Forensic Spectrogram &amp; Amplitude Track
           </h3>
         </div>
@@ -92,10 +92,10 @@ export default function ForensicSpectrogramTrack({
       </div>
 
       {/* 4 Precision Telemetry KPI Metrics (Exact visual match) */}
-      <div className="grid grid-cols-4 gap-2 mb-4 bg-blue-50/30 rounded-xl p-2.5 border border-blue-100/60">
+      <div className="grid grid-cols-4 gap-2 mb-4 bg-blue-50/30 dark:bg-slate-900/60 rounded-xl p-2.5 border border-blue-100/60 dark:border-slate-800">
         <div className="text-center">
           <div className="text-[10px] font-mono text-slate-400 font-bold uppercase tracking-wider">FO BASELINE</div>
-          <div className="text-sm font-extrabold font-mono text-slate-900 mt-0.5">{f0Baseline} Hz</div>
+          <div className="text-sm font-extrabold font-mono text-slate-900 dark:text-slate-100 mt-0.5">{f0Baseline} Hz</div>
         </div>
 
         <div className="text-center">
@@ -113,13 +113,13 @@ export default function ForensicSpectrogramTrack({
 
         <div className="text-center">
           <div className="text-[10px] font-mono text-slate-400 font-bold uppercase tracking-wider">PEAK SPL</div>
-          <div className="text-sm font-extrabold font-mono text-slate-900 mt-0.5">{peakSpl} dBFS</div>
+          <div className="text-sm font-extrabold font-mono text-slate-900 dark:text-slate-100 mt-0.5">{peakSpl} dBFS</div>
         </div>
       </div>
 
       {/* Main Forensic Waveform & Spectrogram Canvas */}
       <div 
-        className="relative bg-white border border-blue-100 rounded-xl p-2 overflow-hidden cursor-crosshair shadow-inner"
+        className="relative bg-white dark:bg-slate-900 border border-blue-100 dark:border-slate-800 rounded-xl p-2 overflow-hidden cursor-crosshair shadow-inner"
         onClick={handleSvgClick}
       >
         {/* Frequency Tiers on Left (4000 Hz, 2000 Hz, 1000 Hz, 250 Hz) */}
@@ -219,12 +219,12 @@ export default function ForensicSpectrogramTrack({
         </svg>
 
         {/* Time Axis Along Bottom */}
-        <div className="flex justify-between items-center text-[10px] font-mono text-slate-500 mt-1.5 pt-1.5 border-t border-slate-100 pl-8">
+        <div className="flex justify-between items-center text-[10px] font-mono text-slate-500 mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800 pl-8">
           <span>03:40.00</span>
           <span>03:50.00</span>
           <span>04:00.00</span>
           <span>04:10.00</span>
-          <span className="text-[#1e3a8a] font-extrabold tracking-tight">
+          <span className="text-[#1e3a8a] dark:text-cyan-400 font-extrabold tracking-tight">
             {formatTime(activeTime > 0 ? activeTime : 261.49)} [LIVE]
           </span>
         </div>
@@ -269,3 +269,5 @@ export default function ForensicSpectrogramTrack({
     </div>
   );
 }
+
+export default React.memo(ForensicSpectrogramTrack);

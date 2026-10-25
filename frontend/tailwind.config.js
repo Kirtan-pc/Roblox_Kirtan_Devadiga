@@ -1,5 +1,6 @@
-/** @type {import('tailwindcss').Config} */
+﻿/** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'class',
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -30,45 +31,10 @@ export default {
         outline: '#747686',
         'outline-variant': '#c3c5d7',
       },
-      borderRadius: {
-        DEFAULT: '0.125rem',
-        lg: '0.25rem',
-        xl: '0.5rem',
-        full: '0.75rem',
-      },
-      spacing: {
-        'space-xs': '0.25rem',
-        'space-sm': '0.5rem',
-        'space-md': '0.75rem',
-        'space-lg': '1rem',
-        'space-xl': '1.5rem',
-        'margin': '1rem',
-        'gutter': '0.75rem',
-      },
       fontFamily: {
-        'body-md': ['Inter'],
-        'body-lg': ['Inter'],
-        'body-sm': ['Inter'],
-        'headline-md': ['Inter'],
-        'headline-lg': ['Inter'],
-        'headline-xl': ['Inter'],
-        'label-caps': ['Inter'],
-        'code-sm': ['JetBrains Mono'],
-        'transcript-timestamp': ['JetBrains Mono'],
-        'transcript-primary': ['Inter'],
-      },
-      fontSize: {
-        'body-md': ['13px', { lineHeight: '18px', fontWeight: '400' }],
-        'body-lg': ['14px', { lineHeight: '22px', fontWeight: '400' }],
-        'body-sm': ['12px', { lineHeight: '16px', fontWeight: '400' }],
-        'headline-md': ['15px', { lineHeight: '20px', fontWeight: '600' }],
-        'headline-lg': ['18px', { lineHeight: '24px', letterSpacing: '-0.01em', fontWeight: '600' }],
-        'headline-xl': ['24px', { lineHeight: '32px', letterSpacing: '-0.015em', fontWeight: '600' }],
-        'label-caps': ['10px', { lineHeight: '12px', letterSpacing: '0.06em', fontWeight: '700' }],
-        'code-sm': ['11px', { lineHeight: '14px', fontWeight: '400' }],
-        'transcript-timestamp': ['11px', { lineHeight: '16px', letterSpacing: '0.02em', fontWeight: '500' }],
-        'transcript-primary': ['14px', { lineHeight: '24px', fontWeight: '400' }],
-      },
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+      }
     },
   },
   plugins: [],

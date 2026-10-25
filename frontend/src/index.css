@@ -1,18 +1,50 @@
-@tailwind base;
+﻿@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bg-app: #f1f5f9;
+  --bg-card: #ffffff;
+  --bg-subtle: #f8fafc;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --border-color: #e2e8f0;
+}
+
+html.dark {
+  --bg-app: #020617;
+  --bg-card: #0f172a;
+  --bg-subtle: #020617;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --border-color: #1e293b;
+}
+
 @layer base {
-  html, body {
-    margin: 0;
-    padding: 0;
-  }
   body {
     overscroll-behavior: none;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    background: #f8f9ff;
-    color: #0f1c2c;
+    background-color: var(--bg-app);
+    color: var(--text-main);
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
+}
+
+/* Light / Dark Mode Surface utility classes */
+.theme-surface {
+  background-color: var(--bg-app);
+  color: var(--text-main);
+}
+
+.theme-card {
+  background-color: var(--bg-card);
+  border-color: var(--border-color);
+  color: var(--text-main);
+}
+
+.theme-subtle {
+  background-color: var(--bg-subtle);
+  border-color: var(--border-color);
 }
 
 ::-webkit-scrollbar {
@@ -23,6 +55,6 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #c3c5d7;
+  background: #64748b;
   border-radius: 3px;
 }

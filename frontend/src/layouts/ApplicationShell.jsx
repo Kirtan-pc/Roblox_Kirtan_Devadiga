@@ -4,7 +4,7 @@ import TopUtilityBar from '../components/TopUtilityBar';
 
 const ApplicationShell = ({ children }) => {
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">
+    <div className="min-h-screen theme-surface font-sans transition-colors duration-200">
       <SidebarNavigation />
       <div className="pl-64">
         <TopUtilityBar />

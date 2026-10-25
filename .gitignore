@@ -1,31 +1,54 @@
-﻿# Python
+# Python
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
+.Python
+env/
 venv/
 .venv/
-.env
-models_cache/
-model_cache/
-.cache/
-huggingface/
+ENV/
 *.pt
 *.pth
 *.ckpt
 *.safetensors
 *.onnx
 
-# Node
-node_modules/
-dist/
-.vite/
-frontend/node_modules/
-frontend/dist/
-frontend/.vite/
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
 
-# OS
+# AI Model Caches
+models_cache/
+**/models_cache/
+model_cache/
+.cache/
+huggingface/
+
+# Node & Frontend Build Artifacts
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+.vite/
+frontend/.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS & Temp Files
 .DS_Store
 Thumbs.db
 Desktop.ini
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# IDE & Tooling
+.vscode/
+.idea/
 
 # Logs
 *.log
